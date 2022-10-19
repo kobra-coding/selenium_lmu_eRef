@@ -2,6 +2,7 @@ import tkinter as tk
 import time
 import PyPDF2
 import os
+import shutil
 from os import listdir
 from os.path import isfile, join
 
@@ -46,18 +47,12 @@ class PageStart(tk.Frame):
         self.varUrl = tk.StringVar()
         self.entryUrl = ttk.Entry(self.labelframeBib, width=50, justify="center", textvariable=self.varUrl)
         self.entryUrl.pack()
-
+     
         self.btnStart = ttk.Button(self, text="Start", width=50, command=lambda: self.getPdfs())
         self.btnStart.pack(pady=30)
 
     def getPdfs(self):
         scrape_web(self.entryUrl.get(), self.entryUser.get(), self.entryPwd.get())
-
-    def file_dialog_json(self, controller):
-        file_path = filedialog.askopenfilename(title="Wählen Sie eine Datenbank", filetypes=[("Datenbank", ".json")])
-        last_occurrence = file_path.rfind("/")
-        set_nr = file_path[(last_occurrence + 1):(last_occurrence + 5)]
-
 
 class Page2nd(tk.Frame):
     TITLE = "Startseite"
@@ -74,8 +69,8 @@ class App(tk.Tk):
         # self.attributes('-fullscreen', True)
         self.wm_state('zoomed')
         fn_center_window(self)
-        # tk.Tk.iconbitmap(self, default="icon.ico")
-        tk.Tk.wm_title(self, "LEGO - Teile finden")
+        tk.Tk.iconbitmap(self, default="fav.ico")
+        tk.Tk.wm_title(self, "LMU - Medizin - Thieme")
 
         container = tk.Frame(self)
         container.pack(side="top", fill="both", expand=True)
@@ -103,6 +98,15 @@ class App(tk.Tk):
         frame = self.frames[cont]
         return frame
 
+    def ask_filename(self):
+        filename = filedialog.asksaveasfilename(
+            filetypes=[('PDF', '.pdf')], initialfile='Output.pdf'
+        )
+        if filename:
+            return filename
+        else:
+            return os.path.join(os.path.abspath(os.getcwd()), 'result.pdf')
+
 
 def fn_center_window(toplevel):
     # https://stackoverrun.com/de/q/754917
@@ -116,11 +120,13 @@ def fn_center_window(toplevel):
 
 
 def scrape_web(url, user, pwd):
-    path_workingDir = ""
-    path_temp = "/temp"
+
+    path_workingDir = os.path.abspath(os.getcwd())
+    path_temp = os.path.join(path_workingDir, "temp")
 
     try:
         os.mkdir(path_temp)
+        print("Ordner erstellt")
     except:
         print("nicht möglich")
 
@@ -132,19 +138,23 @@ def scrape_web(url, user, pwd):
         "plugins.always_open_pdf_externally": True  # It will not show PDF directly in chrome
     })
 
-    driver = webdriver.Chrome(executable_path='C:/Users/kbram/Synology/Dokumente/01_Privat/Programmieren/Selenium/!Driver/chromedriver.exe', options=options)
+    driver = webdriver.Chrome(executable_path='driver/chromedriver.exe', options=options)
 
     # LOGIN
-    driver.get(url)
+    driver.get(url) # Url wird aufgerufen
+    
     # User
-    user = driver.find_element_by_xpath('/html/body/div[2]/div[2]/form/table/tbody/tr[1]/td[2]/input')
-    user.send_keys(user)
+    userfield = driver.find_element_by_xpath('/html/body/div[2]/div[2]/form/table/tbody/tr[1]/td[2]/input')
+    userfield.send_keys(user)
+    
     # Passwort
-    password = driver.find_element_by_xpath('/html/body/div[2]/div[2]/form/table/tbody/tr[2]/td[2]/input')
-    password.send_keys(pwd)
+    passwordfield = driver.find_element_by_xpath('/html/body/div[2]/div[2]/form/table/tbody/tr[2]/td[2]/input')
+    passwordfield.send_keys(pwd)
+    
     # Abschicken
     submit = driver.find_element_by_xpath('/html/body/div[2]/div[3]/input')
     submit.click()
+    
     # Warten
     time.sleep(2)
 
@@ -155,11 +165,14 @@ def scrape_web(url, user, pwd):
     time.sleep(2)
 
     # Book Information
-    book = {
-        "title": driver.find_element_by_xpath('//*[@id="content-container"]/div[1]/div[2]/h1').get_attribute('innerHTML'),
-        "author": driver.find_element_by_xpath('/html/body/div[2]/div[11]/div[2]/div[1]/div[1]/a[1]').get_attribute('innerHTML'),
-        "date": driver.find_element_by_xpath('/html/body/div[2]/div[6]/div[2]/ul/li[3]').get_attribute('innerHTML')
-    }
+    try:
+        book = {
+            "title": driver.find_element_by_xpath('//*[@id="content-container"]/div[1]/div[2]/h1').get_attribute('innerHTML'),
+            "author": driver.find_element_by_xpath('/html/body/div[2]/div[11]/div[2]/div[1]/div[1]/a[1]').get_attribute('innerHTML'),
+            "date": driver.find_element_by_xpath('/html/body/div[2]/div[6]/div[2]/ul/li[3]').get_attribute('innerHTML')
+        }
+    except:
+        print("Metadaten konnten nicht gelesen werden.")
 
     # PDF
 
@@ -230,16 +243,17 @@ def scrape_web(url, user, pwd):
     # print(onlyfiles)
 
     # PDF merge
+    path_temp_file = os.path.join(path_temp, "temp.pdf")
     merger = PdfFileMerger()
 
     for pdf in onlyfiles:
-        merger.append(path_temp + "\\" + str(pdf))
+        merger.append(os.path.join(path_temp, str(pdf)))
 
-    merger.write(path_workingDir + "\\temp.pdf")
+    merger.write(path_temp_file)
     merger.close()
 
     # open temp
-    pdfFileObj = open(path_workingDir + '\\temp.pdf', 'rb')
+    pdfFileObj = open(path_temp_file, 'rb')
     pdfReader = PyPDF2.PdfFileReader(pdfFileObj)
     pages_to_keep = [0]  # page numbering starts from 0
     pages_to_delete = []  # page numbering starts from 0
@@ -267,15 +281,26 @@ def scrape_web(url, user, pwd):
         p = pdfReader.getPage(i)
         output.addPage(p)
 
-    with open(path_workingDir + '\\result.pdf', 'wb') as f:
+    
+    path_result = app.ask_filename()
+
+
+    with open(path_result, 'wb') as f:
         output.write(f)
 
     # remove temp PDF
     pdfFileObj.close()
-    if os.path.exists(path_workingDir + "\\temp.pdf"):
-        os.remove(path_workingDir + "\\temp.pdf")
+    if os.path.exists(path_temp_file):
+        os.remove(path_temp_file)
     else:
-        print(path_workingDir + "\\temp.pdf does not exist")
+        print(path_temp_file + " does not exist")
+    
+    # remove temp Files
+    if os.path.exists(path_temp):
+        shutil.rmtree(path_temp, ignore_errors=True)
+    else:
+        print(path_temp + " does not exist")
+    
 
 
 active_frame = False

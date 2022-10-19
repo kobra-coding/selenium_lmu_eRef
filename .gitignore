@@ -1,1 +1,5 @@
 /driver
+/temp
+*.pdf
+/__pycache__
+/output
