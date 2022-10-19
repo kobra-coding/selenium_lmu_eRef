@@ -5,7 +5,7 @@ import os
 import shutil
 from os import listdir
 from os.path import isfile, join
-
+from datetime import datetime
 
 from tkinter import ttk
 from tkinter import filedialog
@@ -48,20 +48,23 @@ class PageStart(tk.Frame):
         self.entryUrl = ttk.Entry(self.labelframeBib, width=50, justify="center", textvariable=self.varUrl)
         self.entryUrl.pack()
      
-        self.btnStart = ttk.Button(self, text="Start", width=50, command=lambda: self.getPdfs())
+        self.btnStart = ttk.Button(self, text="Start", width=50, command=lambda: self.getPdfs(controller=controller))
         self.btnStart.pack(pady=30)
 
-    def getPdfs(self):
+    def getPdfs(self, controller):
+        controller.show_frame(Page2nd)
         scrape_web(self.entryUrl.get(), self.entryUser.get(), self.entryPwd.get())
 
 class Page2nd(tk.Frame):
-    TITLE = "Startseite"
+    TITLE = "arbeitet..."
 
     def __init__(self, parent, controller):
         tk.Frame.__init__(self, parent)
         label = ttk.Label(self, text=self.TITLE, font=LARGE_FONT)
         label.pack(pady=10, padx=10)
 
+        self.progress = ttk.Progressbar(self, orient='horizontal', mode='determinate')
+        self.progress.pack()
 
 class App(tk.Tk):
     def __init__(self, *args, **kwargs):
@@ -92,7 +95,6 @@ class App(tk.Tk):
         frame.tkraise()
         global active_frame
         active_frame = cont
-        # print("var active_frame now: " + str(active_frame))
 
     def return_frame(self, cont):
         frame = self.frames[cont]
@@ -107,6 +109,8 @@ class App(tk.Tk):
         else:
             return os.path.join(os.path.abspath(os.getcwd()), 'result.pdf')
 
+def error_msg(msg, nr):
+    print(str(datetime.now()) + " [" + str(nr) + "]: " + msg)
 
 def fn_center_window(toplevel):
     # https://stackoverrun.com/de/q/754917
@@ -120,16 +124,19 @@ def fn_center_window(toplevel):
 
 
 def scrape_web(url, user, pwd):
-
+    app.return_frame(Page2nd).progress['value'] = 10
+    # definition of paths
     path_workingDir = os.path.abspath(os.getcwd())
     path_temp = os.path.join(path_workingDir, "temp")
+    path_driver = "driver/chromedriver.exe"
 
+    # create temporary dir
     try:
         os.mkdir(path_temp)
-        print("Ordner erstellt")
     except:
-        print("nicht möglich")
+        error_msg("Der Pfad " + path_temp + " konnte nicht erstellt werden.", 1083)
 
+    # initialization of webdriver
     options = webdriver.ChromeOptions()
     options.add_experimental_option('prefs', {
         "download.default_directory": path_temp,
@@ -138,7 +145,13 @@ def scrape_web(url, user, pwd):
         "plugins.always_open_pdf_externally": True  # It will not show PDF directly in chrome
     })
 
-    driver = webdriver.Chrome(executable_path='driver/chromedriver.exe', options=options)
+    if isfile(path_driver):
+        driver = webdriver.Chrome(executable_path=path_driver, options=options)
+    else:
+        error_msg("Bei der Datei " + path_driver + " handelt es sich nicht um einen geeigneten Webdriver.", 3117)
+        return False
+
+    app.return_frame(Page2nd).progress['value'] = 15
 
     # LOGIN
     driver.get(url) # Url wird aufgerufen
@@ -172,10 +185,12 @@ def scrape_web(url, user, pwd):
             "date": driver.find_element_by_xpath('/html/body/div[2]/div[6]/div[2]/ul/li[3]').get_attribute('innerHTML')
         }
     except:
-        print("Metadaten konnten nicht gelesen werden.")
+        error_msg("Die Metadaten konnten nicht erfasst werden.", 6128)
 
     # PDF
 
+    app.return_frame(Page2nd).progress['value'] = 20
+    
     i = 1
     while i < 100:
         execute10 = 'time.sleep(1)'
@@ -238,9 +253,10 @@ def scrape_web(url, user, pwd):
 
     driver.quit()
 
+    app.return_frame(Page2nd).progress['value'] = 50
+
     # Get only files
     onlyfiles = [f for f in listdir(path_temp) if isfile(join(path_temp, f))]
-    # print(onlyfiles)
 
     # PDF merge
     path_temp_file = os.path.join(path_temp, "temp.pdf")
@@ -251,6 +267,8 @@ def scrape_web(url, user, pwd):
 
     merger.write(path_temp_file)
     merger.close()
+
+    app.return_frame(Page2nd).progress['value'] = 60
 
     # open temp
     pdfFileObj = open(path_temp_file, 'rb')
@@ -267,13 +285,11 @@ def scrape_web(url, user, pwd):
         text1 = pageObj1.extractText()
         if text0 == text1:
             pages_to_delete.append(i)
-            # print("Match", i)
         else:
             pages_to_keep.append(i)
         i += 1
 
-    # print("keep: ", pages_to_keep)
-    # print("delete: ", pages_to_delete)
+    app.return_frame(Page2nd).progress['value'] = 70
 
     output = PyPDF2.PdfFileWriter()
 
@@ -281,27 +297,32 @@ def scrape_web(url, user, pwd):
         p = pdfReader.getPage(i)
         output.addPage(p)
 
-    
+    app.return_frame(Page2nd).progress['value'] = 80
+
     path_result = app.ask_filename()
 
 
     with open(path_result, 'wb') as f:
         output.write(f)
 
+    app.return_frame(Page2nd).progress['value'] = 90
+
     # remove temp PDF
     pdfFileObj.close()
     if os.path.exists(path_temp_file):
         os.remove(path_temp_file)
     else:
-        print(path_temp_file + " does not exist")
+        error_msg(path_temp_file + " konnte nicht gefunden werden.", 6186)
     
     # remove temp Files
     if os.path.exists(path_temp):
         shutil.rmtree(path_temp, ignore_errors=True)
     else:
-        print(path_temp + " does not exist")
+        error_msg(path_temp + " konnte nicht gefunden werden.", 4259)
     
-
+    app.return_frame(Page2nd).progress['value'] = 100
+    app.destroy()
+    exit()
 
 active_frame = False
 app = App()
